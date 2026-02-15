@@ -22,13 +22,14 @@ Claw-Clan provides this through zero-configuration LAN discovery (mDNS/Bonjour),
 +-------------------------------------------------------------+
 |                        claw-clan                             |
 +-----------------------------+-------------------------------+
-|   Skills (2)                |   Scripts (6)                  |
+|   Skills (2)                |   Scripts (7)                  |
 |                             |                                |
 |   claw-clan                 |   claw-register.sh   (mDNS)   |
 |   - Interactive setup       |   claw-discover.sh   (mDNS)   |
 |   - SSH key management      |   claw-ping.sh       (cron)   |
 |   - Peer discovery          |   claw-monitor.sh    (leader)  |
 |   - Fleet status            |   claw-setup-ssh.sh  (keys)   |
+|                             |   claw-remote-install.sh(push)|
 |                             |   claw-sync-skills.sh (git)   |
 |   claw-afterlife            |                                |
 |   - Leader election         |   Library (4)                  |
@@ -42,10 +43,11 @@ Claw-Clan provides this through zero-configuration LAN discovery (mDNS/Bonjour),
 |   [PostgreSQL] <-- optional, for historical data & auditing  |
 +-------------------------------------------------------------+
 |   External Dependencies                                      |
-|   mDNS/Bonjour -- zero-config LAN service discovery          |
+|   mDNS         -- zero-config LAN service discovery          |
+|     macOS: dns-sd + LaunchAgent (built-in)                   |
+|     Linux: avahi-publish + systemd user service              |
 |   SSH          -- secure inter-instance communication        |
 |   cron         -- scheduled keep-alive pings                 |
-|   LaunchAgent  -- persistent mDNS registration               |
 |   GitHub repo  -- fleet manifest + shared skills (optional)  |
 +-------------------------------------------------------------+
 ```
@@ -55,7 +57,7 @@ Claw-Clan provides this through zero-configuration LAN discovery (mDNS/Bonjour),
 ```
  discover (mDNS)     connect (SSH)      health (cron)      recover (leader)
   +-----------+      +----------+      +------------+      +-----------+
-  | dns-sd -B | ---> | SSH test | ---> | claw-ping  | ---> | claw-     |
+  | mDNS      | ---> | SSH test | ---> | claw-ping  | ---> | claw-     |
   | browse    |      | handshake|      | every 15m  |      | monitor   |
   | resolve   |      | exchange |      | update     |      | detect    |
   | save peer |      | keys     |      | peer state |      | recovery  |
@@ -67,11 +69,16 @@ Claw-Clan provides this through zero-configuration LAN discovery (mDNS/Bonjour),
 
 ## Prerequisites
 
-- **macOS** or **Linux**. Both are first-class platforms.
+- **macOS** or **Linux**. Both are first-class platforms with identical capabilities.
 - **OpenClaw** installed and running on each machine.
-- **SSH enabled.** On macOS: System Settings > General > Sharing > Remote Login.
-  On Linux: `sudo systemctl enable ssh` or `sudo apt install openssh-server`
-- **jq** for JSON processing. Install via `brew install jq` if not present.
+- **SSH enabled.**
+  - macOS: System Settings > General > Sharing > Remote Login
+  - Linux: `sudo systemctl enable --now ssh` (Debian/Ubuntu) or `sudo systemctl enable --now sshd` (Fedora/RHEL)
+- **mDNS tools:**
+  - macOS: Built-in (`dns-sd`, `launchctl`) — no installation needed
+  - Linux: `sudo apt install avahi-utils` (Debian/Ubuntu) or `sudo dnf install avahi-tools` (Fedora/RHEL)
+- **jq** for JSON processing. macOS: `brew install jq`. Linux: `sudo apt install jq` or `sudo dnf install jq`.
+- **Bash 4+.** macOS: `brew install bash` (the built-in `/bin/bash` is 3.2). Linux: pre-installed.
 - **git** for cloning the repo and optional skill sync.
 - **Optional:** Docker (for PostgreSQL deployment).
 
@@ -176,11 +183,21 @@ Tests SSH to all peers. Generates a local SSH key if missing. Prints key exchang
 
 Pulls the latest shared skills from the configured GitHub repo locally, then SSHes into each target peer to pull the same repo.
 
+### Remote Install on Peers
+
+Push claw-clan to a peer that doesn't have it installed:
+
+```bash
+~/.openclaw/claw-clan/scripts/claw-remote-install.sh <user> <ip> [name] [gateway-id] [lead-number]
+```
+
+This creates the full setup on the remote machine via SSH — directories, scripts, skills, state.json, mDNS registration, and cron. It also adds this machine as a peer on the remote, creating a bidirectional relationship. If claw-clan is already installed, it updates scripts while preserving existing state.
+
 ### mDNS Registration Management
 
 ```bash
-~/.openclaw/claw-clan/scripts/claw-register.sh start    # Install and start LaunchAgent
-~/.openclaw/claw-clan/scripts/claw-register.sh stop     # Remove LaunchAgent
+~/.openclaw/claw-clan/scripts/claw-register.sh start    # Install and start (LaunchAgent or systemd)
+~/.openclaw/claw-clan/scripts/claw-register.sh stop     # Remove service
 ~/.openclaw/claw-clan/scripts/claw-register.sh status   # Check if running
 ~/.openclaw/claw-clan/scripts/claw-register.sh restart   # Stop and re-start
 ```
@@ -373,7 +390,7 @@ claw-clan/
 |   |   +-- references/
 |   |       +-- setup-guide.md           # Step-by-step first-time setup walkthrough
 |   |       +-- ssh-troubleshooting.md   # SSH failure diagnosis and resolution
-|   |       +-- mdns-reference.md        # dns-sd commands, LaunchAgent, firewall notes
+|   |       +-- mdns-reference.md        # dns-sd/avahi commands, persistence, firewall notes
 |   +-- claw-afterlife/
 |       +-- SKILL.md                     # OpenClaw skill: health, leader, recovery
 |       +-- references/
@@ -381,14 +398,15 @@ claw-clan/
 |           +-- recovery-procedures.md   # Recovery workflow, reports, reinstallation
 |           +-- postgres-setup.md        # Docker/Portainer deploy, migration, credentials
 +-- scripts/
-|   +-- claw-register.sh                # mDNS service registration via LaunchAgent
+|   +-- claw-register.sh                # mDNS registration (LaunchAgent/systemd)
 |   +-- claw-discover.sh                # mDNS browse, lookup, resolve peers
 |   +-- claw-ping.sh                    # Cron-driven keep-alive ping to all peers
 |   +-- claw-monitor.sh                 # Leader-only continuous monitoring of offline peer
 |   +-- claw-setup-ssh.sh               # SSH key generation and connectivity testing
+|   +-- claw-remote-install.sh          # Push claw-clan to a peer via SSH
 |   +-- claw-sync-skills.sh             # GitHub repo skill distribution to peers
 |   +-- lib/
-|       +-- common.sh                   # Shared constants, logging, validation helpers
+|       +-- common.sh                   # Platform detection, logging, shared helpers
 |       +-- storage.sh                  # Pluggable storage backend dispatcher
 |       +-- storage-json.sh             # JSON file storage implementation
 |       +-- storage-postgres.sh         # PostgreSQL storage implementation
@@ -398,6 +416,7 @@ claw-clan/
     +-- plans/
         +-- 2026-02-14-claw-clan-design.md          # Architecture and design decisions
         +-- 2026-02-14-claw-clan-implementation.md   # Task-by-task implementation plan
+        +-- 2026-02-15-linux-support-design.md      # Linux support design decisions
 ```
 
 ### Runtime Data (not in repo)
@@ -412,7 +431,7 @@ claw-clan/
 +-- logs/
 |   +-- ping.log          # Keep-alive ping output
 |   +-- monitor.log       # Continuous monitoring output
-|   +-- mdns-register.log # LaunchAgent stdout
+|   +-- mdns-register.log # mDNS service stdout
 |   +-- events.log        # Event log (JSON backend)
 |   +-- recovery-<id>.json# Recovery reports
 +-- scripts/              # Installed scripts (copied from repo)
@@ -430,12 +449,13 @@ bash install.sh
 
 This re-copies all scripts and skills into `~/.openclaw/claw-clan/` without touching `state.json`, `config.json`, or peer data. It does NOT re-trigger interactive setup. Your identity, configuration, and peer state are preserved.
 
-To update scripts on a remote peer after recovery, use the `claw-afterlife` skill or manually:
+To update scripts on a remote peer after recovery:
 
 ```bash
-scp -r ~/.openclaw/claw-clan/scripts/ <user>@<peer-ip>:~/.openclaw/claw-clan/scripts/
-ssh <user>@<peer-ip> "~/.openclaw/claw-clan/scripts/claw-register.sh restart"
+~/.openclaw/claw-clan/scripts/claw-remote-install.sh <user> <peer-ip> [name] [gateway-id]
 ```
+
+This pushes the latest scripts, restarts mDNS, and ensures cron is installed — while preserving the remote's existing state and configuration.
 
 ---
 
@@ -460,13 +480,14 @@ Then on the peer machine, do the same in reverse pointing back to this machine.
 
 **Possible causes:**
 - Machines are on different subnets or VLANs. mDNS is link-local only and does not cross routers.
-- The peer's LaunchAgent is not running. Check with `claw-register.sh status` on the peer.
-- DNS cache is stale (common after sleep/wake on macOS Sequoia). Flush it:
+- The peer's mDNS service is not running. Check with `claw-register.sh status` on the peer.
+- **macOS:** DNS cache is stale (common after sleep/wake on Sequoia). Flush it:
   ```bash
   sudo dscacheutil -flushcache
   sudo killall -HUP mDNSResponder
   ```
-- Firewall is blocking mDNS. This is rare on macOS since mDNSResponder is exempt, but check if a third-party firewall is interfering.
+- **Linux:** Avahi daemon is not running. Check with `systemctl status avahi-daemon` and enable with `sudo systemctl enable --now avahi-daemon`.
+- Firewall is blocking mDNS (port 5353/UDP). On macOS this is rare since mDNSResponder is exempt. On Linux, check `sudo ufw status` or `sudo iptables -L`.
 
 ### Cron not running
 
@@ -485,9 +506,9 @@ If missing, reinstall it:
   echo "*/15 * * * * ${HOME}/.openclaw/claw-clan/scripts/claw-ping.sh >> ${HOME}/.openclaw/claw-clan/logs/ping.log 2>&1 # claw-clan") | crontab -
 ```
 
-Also verify that cron has Full Disk Access in System Settings > Privacy & Security > Full Disk Access. On modern macOS, cron may be restricted without this.
+On macOS, also verify that cron has Full Disk Access in System Settings > Privacy & Security > Full Disk Access. On modern macOS, cron may be restricted without this. On Linux, cron should work out of the box.
 
-### LaunchAgent not starting
+### macOS: LaunchAgent not starting
 
 **Symptom:** `claw-register.sh status` reports the LaunchAgent is not running.
 
