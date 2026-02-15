@@ -8,14 +8,14 @@ Complete walkthrough for initializing a new claw-clan instance and joining a fle
 
 Before starting, verify the following:
 
-**Operating System:** macOS (darwin). claw-clan uses macOS-specific tools including `ipconfig`, `dns-sd`, and `launchctl`. Linux is not supported as a primary host (but Linux peers can interoperate via avahi -- see `mdns-reference.md`).
+**Operating System:** macOS (darwin) or Linux. claw-clan auto-detects the OS and uses platform-appropriate tools: `dns-sd`/`launchctl` on macOS, `avahi-publish`/`avahi-browse`/`systemctl` on Linux.
 
 **Required binaries:**
 
 ```bash
 # Verify all three are available
-command -v ssh      || echo "MISSING: ssh (should be built-in on macOS)"
-command -v ssh-keygen || echo "MISSING: ssh-keygen (should be built-in on macOS)"
+command -v ssh      || echo "MISSING: ssh"
+command -v ssh-keygen || echo "MISSING: ssh-keygen"
 command -v jq       || echo "MISSING: jq (install via: brew install jq)"
 ```
 
@@ -101,7 +101,7 @@ jq -n \
   --arg gid "<gateway-id>" \
   --arg name "<friendly-name>" \
   --argjson lead <lead-number> \
-  --arg ip "$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)" \
+  --arg ip "$(case $(uname -s) in Darwin) ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null;; Linux) hostname -I 2>/dev/null | awk '{print $1}';; esac)" \
   --arg user "<ssh-user>" \
   --arg repo "<github-repo-or-null>" \
   '{
@@ -175,6 +175,8 @@ Register this instance on the LAN via Bonjour/mDNS so other claw-clan instances 
 3. `KeepAlive` is set to `true` -- if the `dns-sd` process dies, launchd restarts it automatically
 4. `RunAtLoad` is `true` -- the service starts at login
 5. Loads the agent via `launchctl bootstrap gui/<uid>`
+
+On Linux, the equivalent is a systemd user service at `~/.config/systemd/user/claw-clan-mdns.service` using `avahi-publish -s`. The service is managed via `systemctl --user` commands.
 
 The service type registered is `_openclaw._tcp` on the `local` domain, port 22.
 

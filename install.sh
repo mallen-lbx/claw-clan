@@ -82,10 +82,19 @@ case "$(uname -s)" in
         ;;
     Linux)
         if ! command -v avahi-browse &>/dev/null; then
-            warn "avahi-browse not found. mDNS discovery will not work without it."
-            warn "Install: sudo apt install avahi-utils (Debian/Ubuntu)"
+            fail "avahi-browse is required on Linux but not found. Install: sudo apt install avahi-utils (Debian/Ubuntu) or sudo dnf install avahi-tools (Fedora/RHEL)"
         else
             ok "avahi-browse (Linux mDNS)"
+        fi
+        if ! command -v avahi-publish &>/dev/null; then
+            fail "avahi-publish is required on Linux but not found. Install: sudo apt install avahi-utils (Debian/Ubuntu) or sudo dnf install avahi-tools (Fedora/RHEL)"
+        else
+            ok "avahi-publish (Linux mDNS registration)"
+        fi
+        if ! command -v systemctl &>/dev/null; then
+            warn "systemctl not found. mDNS persistence will require manual setup."
+        else
+            ok "systemctl (systemd)"
         fi
         ;;
     *)

@@ -32,7 +32,7 @@ Diagnosing and fixing SSH connectivity issues between claw-clan peers.
    chmod 600 ~/.ssh/authorized_keys
    ```
 
-3. **Wrong key type:** If the remote machine only accepts specific key types, check its `/etc/ssh/sshd_config` for `PubkeyAcceptedAlgorithms`. ed25519 is accepted by all modern macOS versions. If using an older system that only has RSA keys, see the Key Generation section below.
+3. **Wrong key type:** If the remote machine only accepts specific key types, check its `/etc/ssh/sshd_config` for `PubkeyAcceptedAlgorithms`. ed25519 is accepted by all modern macOS and Linux versions. If using an older system that only has RSA keys, see the Key Generation section below.
 
 4. **Key exists but wrong permissions:**
    ```bash
@@ -55,7 +55,7 @@ Host key verification failed.
 ```
 
 **Cause:** The remote machine's host key has changed since the last connection. This happens when:
-- The remote macOS was reinstalled
+- The remote OS was reinstalled
 - The remote machine's SSH keys were regenerated
 - A different machine is now using the same IP address (DHCP reassignment)
 
@@ -244,7 +244,7 @@ If this prints `test`, SSH is working correctly. If it returns any error, key ex
 
 ---
 
-## macOS-Specific: Enabling Remote Login
+## Enabling Remote Login (SSH)
 
 SSH must be enabled on every machine in the fleet. On macOS this is done through System Settings.
 
@@ -274,6 +274,28 @@ sudo launchctl list | grep ssh
 
 # Check if port 22 is listening
 lsof -iTCP:22 -sTCP:LISTEN
+```
+
+### Linux
+
+SSH is usually pre-installed on Linux. To ensure it's running:
+
+```bash
+sudo systemctl enable --now ssh    # Debian/Ubuntu
+sudo systemctl enable --now sshd   # Fedora/RHEL
+```
+
+Verify:
+
+```bash
+systemctl is-active ssh || systemctl is-active sshd
+```
+
+If SSH is not installed:
+
+```bash
+sudo apt install openssh-server    # Debian/Ubuntu
+sudo dnf install openssh-server    # Fedora/RHEL
 ```
 
 ---

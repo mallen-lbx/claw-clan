@@ -7,7 +7,7 @@
 #   2. Pushes scripts and lib files via scp
 #   3. Generates a state.json on the remote with sensible defaults
 #   4. Generates a config.json on the remote
-#   5. Registers mDNS on the remote (macOS only)
+#   5. Registers mDNS on the remote (macOS via LaunchAgent, Linux via systemd)
 #   6. Installs keep-alive cron on the remote
 #   7. Updates local peer file with clawClanInstalled=true
 #
@@ -196,18 +196,18 @@ REMOTE_ADD_PEER
   log_info "This machine added as peer on remote."
 fi
 
-# ─── Register mDNS on remote (macOS only) ────────────────────────────────────
+# ─── Register mDNS on remote ──────────────────────────────────────────────────
 
 REMOTE_OS=$(ssh ${CLAW_SSH_OPTS} "${TARGET_USER}@${TARGET_IP}" "uname -s" 2>/dev/null) || REMOTE_OS="unknown"
 
-if [[ "$REMOTE_OS" == "Darwin" ]]; then
-  log_info "Registering mDNS on remote (macOS)..."
+if [[ "$REMOTE_OS" == "Darwin" || "$REMOTE_OS" == "Linux" ]]; then
+  log_info "Registering mDNS on remote (${REMOTE_OS})..."
   ssh ${CLAW_SSH_OPTS} "${TARGET_USER}@${TARGET_IP}" \
     "~/.openclaw/claw-clan/scripts/claw-register.sh restart" 2>/dev/null || {
     log_warn "mDNS registration on remote failed (non-fatal). Remote agent can re-run later."
   }
 else
-  log_info "Skipping mDNS registration (remote OS: ${REMOTE_OS}, mDNS requires macOS dns-sd)."
+  log_info "Skipping mDNS registration (unsupported remote OS: ${REMOTE_OS})."
 fi
 
 # ─── Install keep-alive cron on remote ────────────────────────────────────────
@@ -286,7 +286,7 @@ echo "  Verification:"
 echo "    state.json:    $( [ "$VERIFY_STATE" = "yes" ] && echo "✓ present" || echo "✗ MISSING" )"
 echo "    Scripts:       $( [ "$VERIFY_SCRIPTS" -gt 0 ] && echo "✓ ${VERIFY_SCRIPTS} installed" || echo "✗ MISSING" )"
 echo "    Cron jobs:     $( [ "$VERIFY_CRON" -gt 0 ] && echo "✓ ${VERIFY_CRON} active" || echo "✗ MISSING" )"
-echo "    mDNS:          $( [ "$REMOTE_OS" = "Darwin" ] && echo "✓ registered" || echo "— skipped (not macOS)" )"
+echo "    mDNS:          $( [[ "$REMOTE_OS" == "Darwin" || "$REMOTE_OS" == "Linux" ]] && echo "✓ registered (${REMOTE_OS})" || echo "— skipped (unsupported OS)" )"
 echo ""
 
 if [[ "$IS_REINSTALL" == "false" ]]; then

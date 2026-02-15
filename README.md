@@ -2,7 +2,7 @@
 
 Multi-instance OpenClaw coordination for local area networks.
 
-![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
 ![Bash](https://img.shields.io/badge/language-bash-green)
 ![OpenClaw](https://img.shields.io/badge/OpenClaw-skill--based-blue)
 
@@ -12,7 +12,7 @@ Multi-instance OpenClaw coordination for local area networks.
 
 Claw-Clan enables multiple OpenClaw instances running on the same LAN to discover each other, monitor health, coordinate recovery, and share skills. It solves a fundamental problem: when you have two or more OpenClaw agents on separate machines, none of them knows the others exist. There is no built-in mechanism for inter-instance awareness, health monitoring, or coordinated recovery.
 
-Claw-Clan provides this through zero-configuration LAN discovery (mDNS/Bonjour), SSH-based communication between peers, cron-driven health checks, and leader-elected recovery coordination. Everything runs as bash scripts orchestrated by two OpenClaw skills, with no additional infrastructure required beyond what macOS already provides.
+Claw-Clan provides this through zero-configuration LAN discovery (mDNS/Bonjour), SSH-based communication between peers, cron-driven health checks, and leader-elected recovery coordination. Everything runs as bash scripts orchestrated by two OpenClaw skills, with no additional infrastructure required beyond what macOS and Linux already provide.
 
 ---
 
@@ -67,9 +67,10 @@ Claw-Clan provides this through zero-configuration LAN discovery (mDNS/Bonjour),
 
 ## Prerequisites
 
-- **macOS** (primary). Linux is possible with Avahi but not the primary target.
+- **macOS** or **Linux**. Both are first-class platforms.
 - **OpenClaw** installed and running on each machine.
 - **SSH enabled.** On macOS: System Settings > General > Sharing > Remote Login.
+  On Linux: `sudo systemctl enable ssh` or `sudo apt install openssh-server`
 - **jq** for JSON processing. Install via `brew install jq` if not present.
 - **git** for cloning the repo and optional skill sync.
 - **Optional:** Docker (for PostgreSQL deployment).
@@ -112,7 +113,7 @@ After collecting your answers, the agent creates the following:
 
 - `~/.openclaw/claw-clan/state.json` -- this instance's identity
 - `~/.openclaw/claw-clan/config.json` -- operational settings with defaults
-- A macOS LaunchAgent for persistent mDNS registration
+- Persistent mDNS registration (macOS: LaunchAgent, Linux: systemd user service)
 - A cron entry for 15-minute keep-alive pings
 - Peer files for any discovered instances on the LAN
 
@@ -193,6 +194,8 @@ Pulls the latest shared skills from the configured GitHub repo locally, then SSH
 Each instance registers a Bonjour service of type `_openclaw._tcp` on port 22 using `dns-sd -R`. TXT records carry the gateway ID, friendly name, lead number, and version. Since `dns-sd -R` blocks in the foreground and the service disappears when the process exits, a macOS LaunchAgent with `KeepAlive: true` and `RunAtLoad: true` ensures the registration persists across reboots and survives crashes.
 
 Discovery uses `dns-sd -B` (browse), `dns-sd -L` (lookup), and `dns-sd -G` (resolve hostname to IP) in sequence for each discovered service.
+
+On Linux, the equivalent is provided by Avahi. `avahi-publish -s` replaces `dns-sd -R` for registration, and `avahi-browse` replaces `dns-sd -B` for discovery. A systemd user service with `Restart=always` provides the same persistence as the macOS LaunchAgent.
 
 ### Keep-Alive Protocol
 
@@ -505,6 +508,26 @@ Check LaunchAgent logs for errors:
 
 ```bash
 cat ~/.openclaw/claw-clan/logs/mdns-register-err.log
+```
+
+### Linux: systemd service not starting
+
+**Symptom:** `claw-register.sh status` reports the service is not running.
+
+Check service status:
+```bash
+systemctl --user status claw-clan-mdns.service
+journalctl --user -u claw-clan-mdns.service --no-pager -n 20
+```
+
+Ensure avahi-daemon is running:
+```bash
+systemctl status avahi-daemon
+```
+
+If avahi-daemon is not running:
+```bash
+sudo systemctl enable --now avahi-daemon
 ```
 
 ### Peer shows as offline but machine is running

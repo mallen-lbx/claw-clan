@@ -5,7 +5,7 @@ metadata:
   openclaw:
     requires:
       bins: ["ssh", "crontab", "jq"]
-    os: darwin
+    os: [darwin, linux]
 ---
 
 # Claw-Afterlife: OpenClaw Fleet Health & Recovery
@@ -162,7 +162,7 @@ When `state.json` does not exist on the remote, `claw-remote-install.sh` will:
 4. Generate `state.json` with defaults (lead=99, gateway=hostname)
 5. Generate `config.json` with default settings
 6. Add THIS machine as a peer on the remote (bidirectional)
-7. Register mDNS on the remote (macOS only)
+7. Register mDNS on the remote (macOS via LaunchAgent, Linux via systemd)
 8. Install keep-alive cron (every 15 minutes)
 9. Update local peer file with `clawClanInstalled=true`
 

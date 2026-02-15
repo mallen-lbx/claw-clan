@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# claw-register.sh — Register this instance via mDNS and manage LaunchAgent
+# claw-register.sh — Register this instance via mDNS and manage persistence
+# macOS: LaunchAgent + dns-sd
+# Linux: systemd user service + avahi-publish
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
@@ -12,6 +14,10 @@ LEAD_NUMBER=$(get_state_field "leadNumber")
 PORT=22
 
 ACTION="${1:-start}"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# macOS: LaunchAgent + dns-sd
+# ═══════════════════════════════════════════════════════════════════════════════
 
 install_launchagent() {
   log_info "Installing LaunchAgent for mDNS registration..."
@@ -75,20 +81,102 @@ status_launchagent() {
   fi
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Linux: systemd user service + avahi-publish
+# ═══════════════════════════════════════════════════════════════════════════════
+
+install_systemd_service() {
+  log_info "Installing systemd user service for mDNS registration..."
+
+  local service_dir
+  service_dir="$(dirname "${CLAW_MDNS_SERVICE_PATH}")"
+  mkdir -p "$service_dir"
+
+  cat > "${CLAW_MDNS_SERVICE_PATH}" <<UNIT
+[Unit]
+Description=claw-clan mDNS registration (${NAME})
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/avahi-publish -s "${NAME}" ${CLAW_SERVICE_TYPE} ${PORT} "gateway=${GATEWAY_ID}" "name=${NAME}" "lead=${LEAD_NUMBER}" "version=${CLAW_VERSION}"
+Restart=always
+RestartSec=5
+StandardOutput=append:${CLAW_LOGS_DIR}/mdns-register.log
+StandardError=append:${CLAW_LOGS_DIR}/mdns-register-err.log
+
+[Install]
+WantedBy=default.target
+UNIT
+
+  # Reload systemd, enable and start
+  systemctl --user daemon-reload
+  systemctl --user enable --now claw-clan-mdns.service
+
+  log_info "mDNS service registered: ${NAME} (${GATEWAY_ID}) on port ${PORT}"
+}
+
+uninstall_systemd_service() {
+  log_info "Removing systemd user service for mDNS registration..."
+  systemctl --user disable --now claw-clan-mdns.service 2>/dev/null || true
+  rm -f "${CLAW_MDNS_SERVICE_PATH}"
+  systemctl --user daemon-reload
+  log_info "mDNS registration stopped."
+}
+
+status_systemd_service() {
+  if systemctl --user is-active --quiet claw-clan-mdns.service 2>/dev/null; then
+    log_info "mDNS systemd service is RUNNING"
+    return 0
+  else
+    log_warn "mDNS systemd service is NOT running"
+    return 1
+  fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Dispatch: route actions to OS-specific implementation
+# ═══════════════════════════════════════════════════════════════════════════════
+
+do_start() {
+  case "$CLAW_OS" in
+    Darwin) install_launchagent ;;
+    Linux)  install_systemd_service ;;
+    *)      log_error "Unsupported OS: $CLAW_OS"; exit 1 ;;
+  esac
+}
+
+do_stop() {
+  case "$CLAW_OS" in
+    Darwin) uninstall_launchagent ;;
+    Linux)  uninstall_systemd_service ;;
+    *)      log_error "Unsupported OS: $CLAW_OS"; exit 1 ;;
+  esac
+}
+
+do_status() {
+  case "$CLAW_OS" in
+    Darwin) status_launchagent ;;
+    Linux)  status_systemd_service ;;
+    *)      log_error "Unsupported OS: $CLAW_OS"; exit 1 ;;
+  esac
+}
+
 case "$ACTION" in
   start|install)
-    install_launchagent
+    do_start
     ;;
   stop|uninstall)
-    uninstall_launchagent
+    do_stop
     ;;
   status)
-    status_launchagent
+    do_status
     ;;
   restart)
-    uninstall_launchagent
+    do_stop
     sleep 1
-    install_launchagent
+    do_start
     ;;
   *)
     echo "Usage: $0 {start|stop|status|restart}"

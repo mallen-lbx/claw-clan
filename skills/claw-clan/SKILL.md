@@ -5,7 +5,7 @@ metadata:
   openclaw:
     requires:
       bins: ["ssh", "ssh-keygen", "jq"]
-    os: darwin
+    os: [darwin, linux]
 ---
 
 # Claw-Clan: OpenClaw Peer Discovery & Coordination
@@ -41,7 +41,7 @@ jq -n \
   --arg gid "<gateway-id>" \
   --arg name "<friendly-name>" \
   --argjson lead <lead-number> \
-  --arg ip "$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)" \
+  --arg ip "$(case $(uname -s) in Darwin) ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null;; Linux) hostname -I 2>/dev/null | awk '{print $1}';; esac)" \
   --arg user "<ssh-user>" \
   --arg repo "<github-repo-or-null>" \
   '{
@@ -68,7 +68,7 @@ jq -n '{
 Then run these scripts in order:
 
 ```bash
-# 1. Register on mDNS (installs LaunchAgent)
+# 1. Register on mDNS (macOS: LaunchAgent, Linux: systemd user service)
 ~/.openclaw/claw-clan/scripts/claw-register.sh start
 
 # 2. Discover peers via mDNS
@@ -126,7 +126,7 @@ This will:
 - Push all claw-clan scripts and skills to the remote via `scp`
 - Generate `state.json` and `config.json` with sensible defaults (lead=99)
 - Add THIS machine as a peer on the remote (bidirectional relationship)
-- Register mDNS on the remote (macOS only)
+- Register mDNS on the remote (macOS via LaunchAgent, Linux via systemd)
 - Install the keep-alive cron on the remote
 - Update the local peer file with `clawClanInstalled=true`
 

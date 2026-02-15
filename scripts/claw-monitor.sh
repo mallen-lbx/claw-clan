@@ -37,7 +37,14 @@ fi
 
 # Attempt 2: Check mDNS (quick 3-second browse)
 mdns_alive=false
-mdns_output=$(timeout 3 dns-sd -B "${CLAW_SERVICE_TYPE}" local 2>/dev/null || true)
+case "$CLAW_OS" in
+  Darwin)
+    mdns_output=$(timeout 3 dns-sd -B "${CLAW_SERVICE_TYPE}" local 2>/dev/null || true)
+    ;;
+  Linux)
+    mdns_output=$(timeout 3 avahi-browse "${CLAW_SERVICE_TYPE}" --terminate --parsable 2>/dev/null || true)
+    ;;
+esac
 if echo "$mdns_output" | grep -q "$peer_name"; then
   mdns_alive=true
 fi
@@ -56,7 +63,7 @@ if [[ "$ssh_alive" == "true" ]]; then
   # Calculate downtime
   downtime="unknown"
   if [[ "$went_offline" != "unknown" && "$went_offline" != "null" ]]; then
-    offline_epoch=$(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$went_offline" '+%s' 2>/dev/null || echo "0")
+    offline_epoch=$(iso_to_epoch "$went_offline")
     now_epoch=$(date +%s)
     if [[ $offline_epoch -gt 0 ]]; then
       diff=$((now_epoch - offline_epoch))
